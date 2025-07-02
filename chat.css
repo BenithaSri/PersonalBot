@@ -1,0 +1,314 @@
+/* Custom Chat Styles */
+:root {
+    --chat-bg: var(--bs-dark);
+    --user-message-bg: var(--bs-primary);
+    --bot-message-bg: var(--bs-secondary);
+    --message-text: var(--bs-light);
+}
+
+body {
+    height: 100vh;
+    background: var(--bs-body-bg);
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.chat-container {
+    background: var(--chat-bg);
+    border-radius: 0.5rem;
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.3);
+    min-height: 60vh;
+}
+
+#chat-messages {
+    max-height: 60vh;
+    scrollbar-width: thin;
+    scrollbar-color: var(--bs-secondary) transparent;
+}
+
+#chat-messages::-webkit-scrollbar {
+    width: 6px;
+}
+
+#chat-messages::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+#chat-messages::-webkit-scrollbar-thumb {
+    background-color: var(--bs-secondary);
+    border-radius: 3px;
+}
+
+.message {
+    margin-bottom: 1rem;
+    animation: fadeInUp 0.3s ease-out;
+}
+
+.message-bubble {
+    max-width: 80%;
+    padding: 0.75rem 1rem;
+    border-radius: 1.25rem;
+    position: relative;
+    word-wrap: break-word;
+    line-height: 1.5;
+}
+
+.user-message {
+    display: flex;
+    justify-content: flex-end;
+}
+
+.user-message .message-bubble {
+    background: linear-gradient(135deg, var(--bs-primary), var(--bs-info));
+    color: white;
+    border-bottom-right-radius: 0.5rem;
+    box-shadow: 0 2px 8px rgba(13, 110, 253, 0.3);
+}
+
+.bot-message {
+    display: flex;
+    justify-content: flex-start;
+    align-items: flex-start;
+}
+
+.bot-avatar {
+    width: 36px;
+    height: 36px;
+    background: linear-gradient(135deg, var(--bs-success), var(--bs-info));
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 0.75rem;
+    flex-shrink: 0;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.bot-avatar i {
+    color: white;
+    font-size: 0.9rem;
+}
+
+.bot-message .message-bubble {
+    background: var(--bs-secondary);
+    color: var(--bs-light);
+    border-bottom-left-radius: 0.5rem;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.message-time {
+    font-size: 0.75rem;
+    color: var(--bs-secondary);
+    margin-top: 0.25rem;
+    opacity: 0.7;
+}
+
+.user-message .message-time {
+    text-align: right;
+}
+
+.bot-message .message-time {
+    text-align: left;
+    margin-left: 48px;
+}
+
+.chat-input-container {
+    background: var(--bs-body-bg);
+    border-top: 1px solid var(--bs-border-color) !important;
+}
+
+#user-input {
+    border: 1px solid var(--bs-border-color);
+    background: var(--bs-body-bg);
+    color: var(--bs-body-color);
+    padding: 0.75rem 1rem;
+    font-size: 0.95rem;
+}
+
+#user-input:focus {
+    border-color: var(--bs-primary);
+    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+    background: var(--bs-body-bg);
+    color: var(--bs-body-color);
+}
+
+#send-button {
+    padding: 0.75rem 1.25rem;
+    border: none;
+    background: linear-gradient(135deg, var(--bs-primary), var(--bs-info));
+    transition: all 0.2s ease;
+}
+
+#send-button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(13, 110, 253, 0.3);
+}
+
+#send-button:disabled {
+    opacity: 0.6;
+    transform: none;
+    box-shadow: none;
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+@keyframes pulse {
+    0% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.05);
+    }
+    100% {
+        transform: scale(1);
+    }
+}
+
+.typing-indicator {
+    display: flex;
+    align-items: center;
+    padding: 0.75rem 1rem;
+    background: var(--bs-secondary);
+    border-radius: 1.25rem;
+    border-bottom-left-radius: 0.5rem;
+    margin-bottom: 1rem;
+    max-width: 80px;
+}
+
+.typing-indicator span {
+    height: 8px;
+    width: 8px;
+    border-radius: 50%;
+    background: var(--bs-light);
+    display: inline-block;
+    margin-right: 4px;
+    animation: typing 1.4s infinite ease-in-out;
+}
+
+.typing-indicator span:nth-child(2) {
+    animation-delay: 0.2s;
+}
+
+.typing-indicator span:nth-child(3) {
+    animation-delay: 0.4s;
+    margin-right: 0;
+}
+
+@keyframes typing {
+    0%, 60%, 100% {
+        transform: translateY(0);
+        opacity: 0.5;
+    }
+    30% {
+        transform: translateY(-10px);
+        opacity: 1;
+    }
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .message-bubble {
+        max-width: 95%;
+        font-size: 0.9rem;
+    }
+    
+    .container {
+        padding-left: 0.5rem;
+        padding-right: 0.5rem;
+    }
+    
+    .chat-container {
+        border-radius: 0;
+        min-height: 70vh;
+    }
+    
+    #chat-messages {
+        max-height: 50vh;
+    }
+}
+
+/* Status Indicator */
+#status-indicator.text-danger {
+    animation: pulse 2s infinite;
+}
+
+/* Welcome card hover effect */
+.card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    transition: all 0.3s ease;
+}
+
+/* Loading animation for send button */
+.btn-loading {
+    position: relative;
+}
+
+.btn-loading .fa-paper-plane {
+    opacity: 0;
+}
+
+.btn-loading::after {
+    content: '';
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    top: 50%;
+    left: 50%;
+    margin-left: -8px;
+    margin-top: -8px;
+    border: 2px solid transparent;
+    border-top-color: #ffffff;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% {
+        transform: rotate(0deg);
+    }
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+/* Contact Form Styles */
+.contact-form-container {
+    max-width: 400px;
+}
+
+.contact-form-container .form-control {
+    background: var(--bs-body-bg);
+    border: 1px solid var(--bs-border-color);
+    color: var(--bs-body-color);
+}
+
+.contact-form-container .form-control:focus {
+    border-color: var(--bs-primary);
+    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+    background: var(--bs-body-bg);
+    color: var(--bs-body-color);
+}
+
+.contact-form-container .btn-primary {
+    background: linear-gradient(135deg, var(--bs-primary), var(--bs-info));
+    border: none;
+}
+
+.contact-form-container .btn-primary:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(13, 110, 253, 0.3);
+}
+
+.contact-form-container h6 {
+    color: var(--bs-light);
+    font-weight: 600;
+}
