@@ -20,8 +20,9 @@ class ChatInterface {
         this.userInput.addEventListener('input', (e) => this.handleInput(e));
         this.userInput.focus();
 
+        // Add welcome message
         this.addMessage(
-            "Hello! I'm Benitha's AI assistant. I can help you learn about her background, skills, experience, and availability. What would you like to know?",
+            "Hi there! I'm here to help you learn about Benitha. She's a talented frontend developer looking for new opportunities. Feel free to ask me anything about her skills, projects, or availability!",
             'bot'
         );
     }
@@ -30,10 +31,13 @@ class ChatInterface {
         try {
             const response = await fetch('/health');
             const data = await response.json();
+            
             if (data.status === 'healthy' && data.ai_components && data.openai_configured) {
                 this.updateStatus('connected', 'Connected');
-            } else {
+            } else if (data.ai_components || data.openai_configured) {
                 this.updateStatus('warning', 'Limited functionality');
+            } else {
+                this.updateStatus('error', 'Service unavailable');
             }
         } catch (error) {
             this.updateStatus('error', 'Connection issues');
@@ -44,6 +48,10 @@ class ChatInterface {
     updateStatus(type, message) {
         this.statusIndicator.className = 'fas fa-circle me-1';
         this.statusText.textContent = message;
+        
+        // Remove existing status classes
+        this.statusIndicator.classList.remove('text-success', 'text-warning', 'text-danger');
+        
         switch (type) {
             case 'connected':
                 this.statusIndicator.classList.add('text-success');
@@ -72,39 +80,60 @@ class ChatInterface {
     async handleSubmit(e) {
         e.preventDefault();
         const question = this.userInput.value.trim();
-        if (!question || this.isLoading()) return;
+        
+        if (!question || this.isLoading()) {
+            return;
+        }
 
+        // Add user message to chat
         this.addMessage(question, 'user');
         this.userInput.value = '';
         this.setLoading(true);
         this.showTypingIndicator();
 
         try {
-            const body = { question };
-            if (this.pendingUserInfo) body.user_info = this.pendingUserInfo;
+            // Prepare request body - using 'question' field to match backend
+            const requestBody = { question };
+            
+            // Add user info if available (for availability requests)
+            if (this.pendingUserInfo) {
+                requestBody.user_info = this.pendingUserInfo;
+            }
 
             const response = await fetch('/chat', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(body)
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestBody)
             });
 
             const data = await response.json();
             this.hideTypingIndicator();
 
-            if (response.ok && data.status === 'success') {
-                this.addMessage(data.answer, 'bot');
-                this.pendingUserInfo = null;
-            } else if (data.status === 'user_info_required') {
-                this.addMessage(data.answer, 'bot');
-                this.showContactForm(question);
+            if (response.ok) {
+                if (data.status === 'success') {
+                    this.addMessage(data.answer, 'bot');
+                    this.pendingUserInfo = null; // Clear user info after successful request
+                } else if (data.status === 'user_info_required') {
+                    this.addMessage(data.answer, 'bot');
+                    this.showContactForm(question);
+                } else {
+                    this.addMessage(data.answer || 'Sorry, something went wrong.', 'bot', true);
+                }
             } else {
-                this.addMessage(data.error || 'Sorry, something went wrong.', 'bot', true);
+                // Handle error responses
+                const errorMessage = data.error || `Error ${response.status}: ${response.statusText}`;
+                this.addMessage(errorMessage, 'bot', true);
             }
-        } catch (err) {
-            console.error(err);
+        } catch (error) {
+            console.error('Chat request failed:', error);
             this.hideTypingIndicator();
-            this.addMessage('Connection error. Try again later.', 'bot', true);
+            this.addMessage(
+                'Connection error. Please check your internet connection and try again.', 
+                'bot', 
+                true
+            );
         }
 
         this.setLoading(false);
@@ -114,53 +143,104 @@ class ChatInterface {
     showContactForm(originalQuestion) {
         const formHtml = `
             <div class="message bot-message" id="contact-form-message">
-                <div class="bot-avatar"><i class="fas fa-user-plus"></i></div>
+                <div class="bot-avatar">
+                    <i class="fas fa-user-plus"></i>
+                </div>
                 <div class="message-bubble">
+                    <p class="mb-3">Please provide your contact information:</p>
                     <form id="contact-info-form">
-                        <input type="text" id="contact-name" placeholder="Your Name *" class="form-control form-control-sm mb-2" required>
-                        <input type="email" id="contact-email" placeholder="Your Email *" class="form-control form-control-sm mb-2" required>
-                        <input type="text" id="contact-company" placeholder="Company (optional)" class="form-control form-control-sm mb-2">
-                        <input type="text" id="contact-role" placeholder="Your Role (optional)" class="form-control form-control-sm mb-2">
-                        <button class="btn btn-sm btn-primary" type="submit">Send</button>
+                        <div class="mb-2">
+                            <input type="text" id="contact-name" placeholder="Your Name *" 
+                                class="form-control form-control-sm" required>
+                        </div>
+                        <div class="mb-2">
+                            <input type="email" id="contact-email" placeholder="Your Email *" 
+                                class="form-control form-control-sm" required>
+                        </div>
+                        <div class="mb-2">
+                            <input type="text" id="contact-company" placeholder="Company (optional)" 
+                                class="form-control form-control-sm">
+                        </div>
+                        <div class="mb-3">
+                            <input type="text" id="contact-role" placeholder="Your Role (optional)" 
+                                class="form-control form-control-sm">
+                        </div>
+                        <button class="btn btn-sm btn-primary" type="submit">
+                            <i class="fas fa-paper-plane me-1"></i>Send Inquiry
+                        </button>
                     </form>
                 </div>
-            </div>`;
+            </div>
+        `;
 
         this.chatMessages.insertAdjacentHTML('beforeend', formHtml);
         this.scrollToBottom();
 
+        // Handle form submission
         document.getElementById('contact-info-form').addEventListener('submit', async (e) => {
             e.preventDefault();
+            
             const name = document.getElementById('contact-name').value.trim();
             const email = document.getElementById('contact-email').value.trim();
             const company = document.getElementById('contact-company').value.trim();
             const role = document.getElementById('contact-role').value.trim();
 
-            if (!name || !email) return this.showError('Name and email are required.');
+            if (!name || !email) {
+                this.showError('Name and email are required.');
+                return;
+            }
 
+            // Validate email format
+            const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+            if (!emailRegex.test(email)) {
+                this.showError('Please enter a valid email address.');
+                return;
+            }
+
+            // Store user info and retry the original question
             this.pendingUserInfo = { name, email, company, role };
+            
+            // Remove the contact form
             document.getElementById('contact-form-message').remove();
+            
+            // Resubmit the original question with user info
             this.userInput.value = originalQuestion;
             this.handleSubmit(new Event('submit'));
         });
+
+        // Focus on the name input
+        document.getElementById('contact-name').focus();
     }
 
     addMessage(content, sender, isError = false) {
         const messageDiv = document.createElement('div');
         messageDiv.className = `message ${sender}-message`;
-        const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        
+        const timestamp = new Date().toLocaleTimeString([], { 
+            hour: '2-digit', 
+            minute: '2-digit' 
+        });
 
         if (sender === 'user') {
             messageDiv.innerHTML = `
-                <div class="message-bubble">${this.escapeHtml(content)}</div>
-                <div class="message-time">${timestamp}</div>`;
+                <div class="message-bubble user-bubble">
+                    ${this.escapeHtml(content)}
+                </div>
+                <div class="message-time">${timestamp}</div>
+            `;
         } else {
             const iconClass = isError ? 'fa-exclamation-triangle text-warning' : 'fa-robot';
-            const bubbleClass = isError ? 'message-bubble error-message' : 'message-bubble';
+            const bubbleClass = isError ? 'message-bubble bot-bubble error-message' : 'message-bubble bot-bubble';
+            
             messageDiv.innerHTML = `
-                <div class="bot-avatar"><i class="fas ${iconClass}"></i></div>
-                <div class="${bubbleClass}">${this.formatBotMessage(content)}</div>
-                <div class="message-time">${timestamp}</div>`;
+                <div class="bot-avatar">
+                    <i class="fas ${iconClass}"></i>
+                </div>
+                <div class="${bubbleClass}">
+                    ${this.formatBotMessage(content)}
+                </div>
+                <div class="message-time">${timestamp}</div>
+            `;
         }
 
         this.chatMessages.appendChild(messageDiv);
@@ -172,7 +252,9 @@ class ChatInterface {
             .replace(/\n\n/g, '<br><br>')
             .replace(/\n/g, '<br>')
             .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-            .replace(/\*(.*?)\*/g, '<em>$1</em>');
+            .replace(/\*(.*?)\*/g, '<em>$1</em>')
+            .replace(/📧/g, '<i class="fas fa-envelope text-primary"></i>')
+            .replace(/🟢/g, '<i class="fas fa-circle text-success"></i>');
     }
 
     escapeHtml(text) {
@@ -186,30 +268,46 @@ class ChatInterface {
         typingDiv.className = 'message bot-message';
         typingDiv.id = 'typing-indicator-message';
         typingDiv.innerHTML = `
-            <div class="bot-avatar"><i class="fas fa-robot"></i></div>
-            <div class="typing-indicator"><span></span><span></span><span></span></div>`;
+            <div class="bot-avatar">
+                <i class="fas fa-robot"></i>
+            </div>
+            <div class="typing-indicator">
+                <span></span><span></span><span></span>
+            </div>
+        `;
+        
         this.chatMessages.appendChild(typingDiv);
         this.scrollToBottom();
     }
 
     hideTypingIndicator() {
         const typingIndicator = document.getElementById('typing-indicator-message');
-        if (typingIndicator) typingIndicator.remove();
+        if (typingIndicator) {
+            typingIndicator.remove();
+        }
     }
 
     setLoading(loading) {
-        this.sendButton.disabled = loading;
+        this.sendButton.disabled = loading || !this.userInput.value.trim();
         this.userInput.disabled = loading;
-        loading ? this.loadingIndicator.classList.remove('d-none') : this.loadingIndicator.classList.add('d-none');
+        
+        if (loading) {
+            this.loadingIndicator.classList.remove('d-none');
+        } else {
+            this.loadingIndicator.classList.add('d-none');
+        }
     }
 
     isLoading() {
-        return this.sendButton.disabled;
+        return this.userInput.disabled;
     }
 
     scrollToBottom() {
         setTimeout(() => {
-            this.chatMessages.scrollTo({ top: this.chatMessages.scrollHeight, behavior: 'smooth' });
+            this.chatMessages.scrollTo({
+                top: this.chatMessages.scrollHeight,
+                behavior: 'smooth'
+            });
         }, 100);
     }
 
@@ -219,6 +317,20 @@ class ChatInterface {
     }
 }
 
-document.addEventListener('DOMContentLoaded', () => new ChatInterface());
-window.addEventListener('online', () => new ChatInterface().checkHealth());
-window.addEventListener('offline', () => new ChatInterface().updateStatus('error', 'Offline'));
+// Initialize the chat interface when the page loads
+document.addEventListener('DOMContentLoaded', () => {
+    window.chatInterface = new ChatInterface();
+});
+
+// Handle online/offline status
+window.addEventListener('online', () => {
+    if (window.chatInterface) {
+        window.chatInterface.checkHealth();
+    }
+});
+
+window.addEventListener('offline', () => {
+    if (window.chatInterface) {
+        window.chatInterface.updateStatus('error', 'Offline');
+    }
+});
