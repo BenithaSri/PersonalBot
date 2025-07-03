@@ -308,31 +308,45 @@ What would you like to know more about? Her projects, experience, or maybe her a
         try:
             docs = vector_store.similarity_search(question, k=3)
             
-            # Add live update and additional Q&A context
-            docs.append(Document(page_content=live_update))
-            docs.append(Document(page_content=additional_qa))
+            # Combine all relevant context
+            context_parts = [resume_text, live_update, additional_qa]
             
             # Add availability context if this is an availability question
             if is_availability_question:
                 availability_context = f"""
-IMPORTANT AVAILABILITY CONTEXT:
+AVAILABILITY CONTEXT:
 - Current date: {datetime.now().strftime('%B %d, %Y')}
 - Notification sent: {datetime.now().strftime('%B %d, %Y at %I:%M %p EST')}
 - Benitha will be notified about this availability inquiry
 - Requested timeframe: {date_context if date_context else 'Not specified'}
 """
-                docs.append(Document(page_content=availability_context))
+                context_parts.append(availability_context)
             
-            # Generate response using QA chain with natural conversation prompt
-            conversation_prompt = f"""
-You are Benitha's personal assistant helping people learn about her professional background. 
-Respond in a natural, conversational tone as if you're speaking directly to the person.
-Use "she" or "Benitha" when referring to her. Keep responses friendly but professional.
-Avoid overly formal language or AI-like phrases. 
+            # Add found documents content
+            for doc in docs:
+                context_parts.append(doc.page_content)
+            
+            full_context = "\n\n".join(context_parts)
+            
+            # Use direct LLM call instead of QA chain for better control
+            messages = [
+                {"role": "system", "content": f"""You are helping someone learn about Benitha Mutesi, a frontend developer. Answer questions using the specific information provided below.
 
-Question: {question}
-"""
-            answer = qa_chain.run(input_documents=docs, question=conversation_prompt)
+RESUME AND BACKGROUND INFORMATION:
+{full_context}
+
+Guidelines for responses:
+- Be specific and detailed using exact information from the context
+- Mention actual project names, technologies, dates, and experiences
+- Be conversational and natural, not robotic
+- If asked about skills, list her specific technical stack
+- If asked about projects, describe the actual ones mentioned
+- Use "she" when referring to Benitha"""},
+                {"role": "user", "content": question}
+            ]
+            
+            response = llm.invoke(messages)
+            answer = response.content
             
             # Add notification confirmation for availability questions
             if is_availability_question:
