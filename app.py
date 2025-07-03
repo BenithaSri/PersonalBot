@@ -9,13 +9,13 @@ from langchain.text_splitter import CharacterTextSplitter
 from langchain.embeddings.openai import OpenAIEmbeddings
 from langchain.chat_models import ChatOpenAI
 from langchain.chains.question_answering import load_qa_chain
-from langchain.schema import Document
 from dotenv import load_dotenv
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 # Configure logging
+t_logging = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG)
 
 # Load environment variables
@@ -146,17 +146,13 @@ Q: What are Benitha's career goals?
 A: Benitha aims to grow into a senior frontend role with opportunities to mentor junior developers and contribute to architectural decisions. She's interested in companies that value innovation, continuous learning, and work-life balance.
 '''
 
-# Email notification functions
-
-def send_availability_notification(question, user_info, date_context=""):  
-    """Send email notification for availability inquiries"""
+# Email notification function
+def send_availability_notification(question, user_info, date_context=""):
     gmail_email = os.environ.get('GMAIL_EMAIL')
     gmail_password = os.environ.get('GMAIL_APP_PASSWORD')
-
     if not gmail_email or not gmail_password:
         app.logger.warning("Gmail credentials not configured, skipping email notification")
         return False
-
     try:
         subject = f"Availability Inquiry from {user_info.get('name','Unknown')} - Resume Chatbot"
         body = f"""
@@ -174,27 +170,23 @@ Question: \"{question}\"
 
 Time Received: {datetime.now().strftime('%B %d, %Y at %I:%M %p EST')}
 """
-        
         msg = MIMEText(body, 'plain')
         msg['Subject'] = subject
         msg['From'] = gmail_email
         msg['To'] = 'panchagirib@gmail.com'
-
         with smtplib.SMTP('smtp.gmail.com', 587) as server:
             server.starttls()
             server.login(gmail_email, gmail_password)
             server.send_message(msg)
-
         app.logger.info("Availability notification sent successfully")
         return True
     except Exception as e:
-        app.logger.error(f"Failed to send availability notification: {e}")  
+        app.logger.error(f"Failed to send availability notification: {e}")
         return False
 
-# Utility functions for detecting availability questions
-
+# Availability detection utilities
 def detect_availability_question(question):
-    patterns = [  
+    patterns = [
         r"\b(available|availability)\b",
         r"\b(interview|meeting|call)\b.*\b(when|time|date|schedule)\b",
         r"\b(when|what time|schedule)\b.*\b(interview|meeting|call|available)\b",
@@ -226,30 +218,82 @@ def extract_date_context(question):
 vector_store = None
 qa_chain = None
 try:
-    logging.info("Initializing AI components...")
+    t_logging.info("Initializing AI components...")
     text_splitter = CharacterTextSplitter(chunk_size=500, chunk_overlap=50)
     chunks = text_splitter.split_text(resume_text)
     embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
     vector_store = FAISS.from_texts(chunks, embedding=embeddings)
     llm = ChatOpenAI(openai_api_key=OPENAI_API_KEY, model_name="gpt-3.5-turbo", temperature=0.3)
     qa_chain = load_qa_chain(llm, chain_type="stuff")
-    logging.info("AI components initialized successfully")
+    t_logging.info("AI components initialized successfully")
 except Exception as e:
-    logging.error(f"Failed to initialize AI components: {e}")
+    t_logging.error(f"Failed to initialize AI components: {e}")
 
 @app.route('/')
 def index():
+    """Render the chat UI"""
     return render_template('index.html')
 
 @app.route('/chat', methods=['POST'])
 def chat():
-    data = request.get_json() or {}
-    question = data.get('question','').strip()
-    if not question:
-        return jsonify({'error':'Question is required'}), 400
-    is_avail = detect_availability_question(question)
-    date_ctx = extract_date_context(question) if is_avail else ""
-    if is_avail:
-        ui = data.get('user_info',{})
-        if not ui.get('name') or not ui.get('email'):
-            return jsonify({'error':'User information is required for availability inquiries'}), 400
+    """Handle incoming chat messages"""
+    try:
+        data = request.get_json() or {}
+        question = data.get('question', '').strip()
+        if not question:
+            return jsonify({'error': 'Question is required'}), 400
+        is_avail = detect_availability_question(question)
+        date_ctx = extract_date_context(question) if is_avail else ""
+        if is_avail:
+            ui = data.get('user_info', {})
+            if not ui.get('name') or not ui.get('email'):
+                return jsonify({
+                    'question': question,
+                    'answer': "Great! I'd love to help you connect with Benitha. Could you share your name and email?",
+                    'status': 'user_info_required'
+                })
+            send_availability_notification(question, ui, date_ctx)
+        if not vector_store or not qa_chain:
+            fallback = (
+                "I'm happy to introduce Benitha — a frontend developer skilled in React, JS, and modern web tech. "
+                "She’s open to new roles and would love to chat!"
+            )
+            return jsonify({'question': question, 'answer': fallback, 'status': 'success'})
+        docs = vector_store.similarity_search(question, k=3)
+        context_parts = [resume_text, live_update, additional_qa]
+        if is_avail:
+            ctx = f"AVAILABILITY CONTEXT:\n- Date: {datetime.now():%B %d, %Y}\n- Requested: {date_ctx or 'n/a'}"
+            context_parts.append(ctx)
+        for d in docs:
+            context_parts.append(d.page_content)
+        full_context = "\n\n".join(context_parts)
+        system_msg = {
+            'role': 'system',
+            'content': (
+                f"You are an assistant that answers questions about Benitha Mutesi using the context below:\n\n{full_context}" 
+            )
+        }
+        user_msg = {'role': 'user', 'content': question}
+        resp = llm.invoke([system_msg, user_msg])
+        answer = resp.content
+        if is_avail:
+            answer += "\n\n📧 I've notified Benitha about your inquiry. She'll be in touch soon!"
+        return jsonify({'question': question, 'answer': answer, 'status': 'success'})
+    except Exception as e:
+        t_logging.error(f"Error processing chat: {e}")
+        return jsonify({'error': 'Internal error'}), 500
+
+@app.route('/health')
+def health():
+    """Health check endpoint"""
+    ready = bool(vector_store and qa_chain and OPENAI_API_KEY != "your-default-key")
+    return jsonify({
+        'status': 'healthy' if ready else 'unhealthy',
+        'ai_ready': bool(vector_store and qa_chain),
+        'api_key_set': OPENAI_API_KEY != "your-default-key",
+        'time': datetime.now().isoformat()
+    })
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=True)
