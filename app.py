@@ -147,15 +147,16 @@ A: Benitha aims to grow into a senior frontend role with opportunities to mentor
 '''
 
 # Email notification functions
-def send_availability_notification(question, user_info, date_context=""):
+
+def send_availability_notification(question, user_info, date_context=""):  
     """Send email notification for availability inquiries"""
     gmail_email = os.environ.get('GMAIL_EMAIL')
     gmail_password = os.environ.get('GMAIL_APP_PASSWORD')
-    
+
     if not gmail_email or not gmail_password:
         app.logger.warning("Gmail credentials not configured, skipping email notification")
         return False
-    
+
     try:
         subject = f"Availability Inquiry from {user_info.get('name','Unknown')} - Resume Chatbot"
         body = f"""
@@ -167,5 +168,88 @@ Contact Information:
 - Company: {user_info.get('company','Not provided')}
 - Role: {user_info.get('role','Not provided')}
 
-Question: \"{question}\"   
-\
+Question: \"{question}\" 
+
+{f'Requested Timeframe: {date_context}' if date_context else ''}
+
+Time Received: {datetime.now().strftime('%B %d, %Y at %I:%M %p EST')}
+"""
+        
+        msg = MIMEText(body, 'plain')
+        msg['Subject'] = subject
+        msg['From'] = gmail_email
+        msg['To'] = 'panchagirib@gmail.com'
+
+        with smtplib.SMTP('smtp.gmail.com', 587) as server:
+            server.starttls()
+            server.login(gmail_email, gmail_password)
+            server.send_message(msg)
+
+        app.logger.info("Availability notification sent successfully")
+        return True
+    except Exception as e:
+        app.logger.error(f"Failed to send availability notification: {e}")  
+        return False
+
+# Utility functions for detecting availability questions
+
+def detect_availability_question(question):
+    patterns = [  
+        r"\b(available|availability)\b",
+        r"\b(interview|meeting|call)\b.*\b(when|time|date|schedule)\b",
+        r"\b(when|what time|schedule)\b.*\b(interview|meeting|call|available)\b",
+        r"\b(free|busy)\b.*\b(time|schedule|when)\b",
+        r"\b(can we|let's|would you like to)\b.*\b(meet|interview|call|schedule)\b",
+        r"\b(calendar|scheduling|appointment)\b",
+        r"\b(this week|next week|today|tomorrow)\b.*\b(available|free|interview|meeting)\b"
+    ]
+    return any(re.search(p, question, re.IGNORECASE) for p in patterns)
+
+
+def extract_date_context(question):
+    date_patterns = [
+        r"\b(today|tomorrow)\b",
+        r"\b(this|next)\s+(week|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b",
+        r"\b(morning|afternoon|evening)\b",
+        r"\b(\d{1,2}:\d{2})\s*(am|pm)?\b",
+        r"\b(\d{1,2})\s*(am|pm)\b",
+        r"\b(january|february|march|april|may|june|july|august|september|october|november|december)\b",
+        r"\b(\d{1,2}/\d{1,2})\b"
+    ]
+    matches = []
+    for p in date_patterns:
+        for m in re.findall(p, question, re.IGNORECASE):
+            matches.append(m if isinstance(m, str) else " ".join(m))
+    return ", ".join(matches)
+
+# Initialize AI components
+vector_store = None
+qa_chain = None
+try:
+    logging.info("Initializing AI components...")
+    text_splitter = CharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+    chunks = text_splitter.split_text(resume_text)
+    embeddings = OpenAIEmbeddings(openai_api_key=OPENAI_API_KEY)
+    vector_store = FAISS.from_texts(chunks, embedding=embeddings)
+    llm = ChatOpenAI(openai_api_key=OPENAI_API_KEY, model_name="gpt-3.5-turbo", temperature=0.3)
+    qa_chain = load_qa_chain(llm, chain_type="stuff")
+    logging.info("AI components initialized successfully")
+except Exception as e:
+    logging.error(f"Failed to initialize AI components: {e}")
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/chat', methods=['POST'])
+def chat():
+    data = request.get_json() or {}
+    question = data.get('question','').strip()
+    if not question:
+        return jsonify({'error':'Question is required'}), 400
+    is_avail = detect_availability_question(question)
+    date_ctx = extract_date_context(question) if is_avail else ""
+    if is_avail:
+        ui = data.get('user_info',{})
+        if not ui.get('name') or not ui.get('email'):
+            return jsonify({'error':'User information is required for availability inquiries'}), 400
